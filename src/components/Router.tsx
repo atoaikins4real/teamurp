@@ -1,6 +1,6 @@
 import React from 'react';
 import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
-import { useTenant } from '../contexts/TenantContext'; // <-- Now using your actual auth state!
+import { useTenant } from '../contexts/TenantContext'; 
 import { Loader2 } from 'lucide-react';
 import MainLayout from '../layouts/MainLayout';
 
@@ -29,7 +29,6 @@ interface ProtectedRouteProps {
 }
 
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRoles }) => {
-  // THE FIX: We pull the real user state from Supabase via your Context
   const { user, initializing } = useTenant();
   const location = useLocation();
 
@@ -41,12 +40,12 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRoles }) 
     );
   }
 
-  // Not authenticated? Send to login.
+  // Not authenticated? Send to login but remember where they were trying to go
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Wrong role? Send to explore.
+  // Wrong role? Kick them back to explore.
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     return <Navigate to="/explore" replace />;
   }
@@ -58,7 +57,7 @@ function AppRouter() {
   return (
     <Routes>
       {/* ==========================================
-          FULL-SCREEN ROUTES
+          FULL-SCREEN ROUTES (No Sidebar/Navigation)
           ========================================== */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignUpPage />} />
@@ -71,23 +70,22 @@ function AppRouter() {
           ========================================== */}
       <Route element={<MainLayout />}>
         
-        {/* 🟢 PUBLIC ZONE */}
+        {/* 🟢 PUBLIC ZONE (Guests & All Users) */}
+        {/* THE MAGIC FIX: Root URL instantly redirects to Explore */}
+        <Route path="/" element={<Navigate to="/explore" replace />} />
         <Route path="/explore" element={<Explore />} />
         
-        {/* 🔴 ALL LOGGED-IN USERS */}
+        {/* 🔴 ALL LOGGED-IN USERS (Tourists & Vendors) */}
         <Route element={<ProtectedRoute />}>
           <Route path="/messages" element={<Messages />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/profile/:id" element={<Profile />} />
           <Route path="/bookings" element={<Bookings />} />
           <Route path="/saved" element={<Saved />} />
-          {/* Added /home to prevent the BottomNav from crashing into the fallback route */}
-          <Route path="/home" element={<Explore />} /> 
         </Route>
 
         {/* 🟣 PARTNERS / VENDORS ONLY */}
         <Route element={<ProtectedRoute allowedRoles={['partner', 'vendor']} />}>
-          <Route path="/" element={<Navigate to="/feeds" replace />} />
           <Route path="/feeds" element={<Feeds />} />
           <Route path="/recap" element={<Recap />} />
           <Route path="/groups" element={<Groups />} />
@@ -96,7 +94,7 @@ function AppRouter() {
 
       </Route>
 
-      {/* Fallback */}
+      {/* Fallback Catch-All */}
       <Route path="*" element={<Navigate to="/explore" replace />} />
     </Routes>
   );
