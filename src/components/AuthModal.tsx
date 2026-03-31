@@ -8,7 +8,7 @@ interface AuthModalProps {
   message?: string;
 }
 
-export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, message = "Join TeamUp" }) => {
+export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, message = "Join TeamUrp" }) => {
   const navigate = useNavigate();
 
   if (!isOpen) return null;
@@ -37,7 +37,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, message =
             {message}
           </h2>
           <p className="text-sm text-slate-400 mt-2">
-            How are you using TeamUp today?
+            How are you using TeamUrp today?
           </p>
         </div>
 

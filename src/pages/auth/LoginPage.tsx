@@ -104,7 +104,7 @@ const LoginPage: React.FC = () => {
               </h2>
               
               <div className="mt-1.5 flex items-center gap-1.5 text-[11px] sm:text-xs text-slate-400">
-                <span>New to TeamUp?</span>
+                <span>New to TeamUrp?</span>
                 <a href="/signup" className="font-bold text-[#1da1f2] hover:text-blue-400 transition-colors">Sign Up</a>
               </div>
             </div>
