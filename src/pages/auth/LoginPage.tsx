@@ -12,7 +12,6 @@ const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [socialLoading, setSocialLoading] = useState<string | null>(null); 
   const [errorMsg, setErrorMsg] = useState('');
 
   // Function to handle Email/Password Login
@@ -37,24 +36,6 @@ const LoginPage: React.FC = () => {
     }
   };
 
-  // Function to handle Social (OAuth) Login
-  const handleSocialLogin = async (provider: 'google' | 'apple' | 'facebook') => {
-    setSocialLoading(provider);
-    setErrorMsg('');
-
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: provider,
-        options: { redirectTo: `${window.location.origin}/feeds` }
-      });
-
-      if (error) throw error;
-    } catch (error: any) {
-      setErrorMsg(error.message || `Failed to log in with ${provider}.`);
-      setSocialLoading(null);
-    }
-  };
-  
   return (
     <SlideshowLayout>
       {/* FULL SCREEN OVERLAY
@@ -159,61 +140,12 @@ const LoginPage: React.FC = () => {
               {/* Primary Blue Button */}
               <button 
                 type="submit"
-                disabled={isLoading || socialLoading !== null}
+                disabled={isLoading}
                 className="w-full py-2.5 sm:py-3 bg-[#1da1f2] text-white rounded-full font-bold text-sm shadow-[0_8px_20px_rgba(29,161,242,0.3)] hover:bg-[#1a91da] transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {isLoading ? <Loader2 className="animate-spin" size={16} /> : "Log In"}
               </button>
             </form>
-
-            {/* Dedicated Social Login Section */}
-            <div className="mt-5 pt-4 border-t border-white/10">
-              <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                
-                {/* Google Button */}
-                <button 
-                  type="button"
-                  onClick={() => handleSocialLogin('google')}
-                  disabled={socialLoading !== null}
-                  className="flex items-center justify-center p-2.5 rounded-xl bg-[#2a2f3a]/60 border border-white/5 hover:bg-[#2a2f3a] transition-all group disabled:opacity-50 shadow-sm"
-                >
-                  {socialLoading === 'google' 
-                    ? <Loader2 className="animate-spin text-white h-4 w-4 sm:h-5 sm:w-5" /> 
-                    : <img src="https://authjs.dev/img/providers/google.svg" alt="Google" className="h-4 w-4 sm:h-5 sm:w-5 group-hover:scale-110 transition-transform" />
-                  }
-                </button>
-          
-                {/* Apple Button (Uncomment when ready) */}
-                {/*
-                <button 
-                  type="button"
-                  onClick={() => handleSocialLogin('apple')}
-                  disabled={socialLoading !== null}
-                  className="flex items-center justify-center p-2.5 rounded-xl bg-[#2a2f3a]/60 border border-white/5 hover:bg-[#2a2f3a] transition-all group disabled:opacity-50 shadow-sm"
-                >
-                  {socialLoading === 'apple' 
-                    ? <Loader2 className="animate-spin text-white h-4 w-4 sm:h-5 sm:w-5" /> 
-                    : <img src="https://authjs.dev/img/providers/apple.svg" alt="Apple" className="h-4 w-4 sm:h-5 sm:w-5 invert group-hover:scale-110 transition-transform" />
-                  }
-                </button>
-                */}
-
-                {/* Facebook Button (Uncomment when ready) */}
-                {/* <button 
-                  type="button"
-                  onClick={() => handleSocialLogin('facebook')}
-                  disabled={socialLoading !== null}
-                  className="flex items-center justify-center p-2.5 rounded-xl bg-[#2a2f3a]/60 border border-white/5 hover:bg-[#2a2f3a] transition-all group disabled:opacity-50 shadow-sm"
-                >
-                  {socialLoading === 'facebook' 
-                    ? <Loader2 className="animate-spin text-white h-4 w-4 sm:h-5 sm:w-5" /> 
-                    : <img src="https://authjs.dev/img/providers/facebook.svg" alt="Facebook" className="h-4 w-4 sm:h-5 sm:w-5 group-hover:scale-110 transition-transform" />
-                  }
-                </button>
-                */}
-
-              </div>
-            </div>
 
           </div>
         </div>
