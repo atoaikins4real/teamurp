@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useTenant } from '../contexts/TenantContext';
 import { supabase } from '../lib/supabase';
+import { AuthModal } from '../components/AuthModal'; // <-- IMPORT ADDED
 
 // --- HELPERS ---
 const timeAgo = (dateString: string) => {
@@ -77,6 +78,9 @@ export default function Feeds() {
   const navigate = useNavigate();
   const { setHideBottomNav } = useOutletContext<any>() || {};
   
+  // Get the user's role to determine if they can post
+  const userRole = user?.role || 'tourist';
+  
   const [postText, setPostText] = useState('');
   const [isPosting, setIsPosting] = useState(false);
   const [posts, setPosts] = useState<any[]>([]);
@@ -116,6 +120,10 @@ export default function Feeds() {
   const [pullStartY, setPullStartY] = useState(0);
   const [pullDistance, setPullDistance] = useState(0);
   const [isPulling, setIsPulling] = useState(false);
+
+  // --- NEW: Auth Modal State ---
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authMessage, setAuthMessage] = useState('Join TeamUp');
 
   // --- SMART FETCH LOGIC ---
   const fetchFeedsAndStories = async (isManualRefresh = false) => {
@@ -269,14 +277,58 @@ export default function Feeds() {
 
   // --- INTERACTION LOGIC ---
   const toggleRepost = async (postId: string) => {
-    if (!user) return alert("Sign in to repost!");
-    const post = posts.find(p => p.id === postId); if (!post) return;
+    if (!user) {
+      setAuthMessage("Sign in to repost!");
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    const post = posts.find(p => p.id === postId); 
+    if (!post) return;
+
     const isCurrentlyReposted = post.isReposted;
-    setPosts(posts.map(p => p.id === postId ? { ...p, isReposted: !isCurrentlyReposted, reposts: isCurrentlyReposted ? (p.reposts || 1) - 1 : (p.reposts || 0) + 1 } : p));
+    
+    // Optimistic UI update for the original post's repost counter
+    setPosts(posts.map(p => p.id === postId ? { 
+      ...p, 
+      isReposted: !isCurrentlyReposted, 
+      reposts: isCurrentlyReposted ? Math.max(0, p.reposts - 1) : p.reposts + 1 
+    } : p));
+
     try {
-      if (isCurrentlyReposted) await supabase.from('reposts').delete().match({ post_id: postId, user_id: user.id });
-      else await supabase.from('reposts').insert({ post_id: postId, user_id: user.id });
-    } catch (error) { fetchFeedsAndStories(); }
+      if (isCurrentlyReposted) {
+        // Undo the repost engagement
+        await supabase.from('reposts').delete().match({ post_id: postId, user_id: user.id });
+      } else {
+        // 1. Record the repost engagement on the original post
+        await supabase.from('reposts').insert({ post_id: postId, user_id: user.id });
+        
+        // 2. Format the author's tag (stripping spaces so it formats properly as a single @mention)
+        const authorTag = `@${post.author.name.replace(/\s+/g, '')}`;
+        
+        // 3. Construct the new content
+        const repostContent = `♻️ Reposted from ${authorTag}\n\n${post.content || ''}`;
+        
+        // 4. Merge existing tags with the new author tag
+        const existingTags = post.tags || [];
+        const newTags = existingTags.includes(authorTag) ? existingTags : [...existingTags, authorTag];
+
+        // 5. Create the new post in the feed, carrying over their media
+        await supabase.from('posts').insert([{ 
+          author_id: user.id, 
+          content: repostContent.trim(), 
+          media_urls: post.media_urls,
+          tags: newTags
+        }]);
+        
+        // 6. Refresh the feed so the new post appears immediately at the top
+        fetchFeedsAndStories(true);
+      }
+    } catch (error) { 
+      console.error("Failed to repost:", error);
+      // Revert UI if the database transaction fails
+      fetchFeedsAndStories(); 
+    }
   };
 
   const handleCommentChange = (e: React.ChangeEvent<HTMLInputElement>, targetId: string) => {
@@ -303,8 +355,14 @@ export default function Feeds() {
   };
 
   const handleCreateComment = async (postId: string) => {
+    if (!user) {
+      setAuthMessage("Sign in to comment!");
+      setIsAuthModalOpen(true);
+      return;
+    }
     const content = commentInputs[postId];
-    if (!content?.trim() || !user) return;
+    if (!content?.trim()) return;
+    
     try {
       await supabase.from('comments').insert([{ post_id: postId, user_id: user.id, content: content.trim() }]);
       setCommentInputs(prev => ({ ...prev, [postId]: '' })); 
@@ -395,7 +453,11 @@ export default function Feeds() {
   };
 
   const toggleLike = async (postId: string) => {
-    if (!user) return alert("Sign in to like posts!");
+    if (!user) {
+      setAuthMessage("Sign in to like posts!");
+      setIsAuthModalOpen(true);
+      return;
+    }
     const post = posts.find(p => p.id === postId); if (!post) return;
     const isCurrentlyLiked = post.isLiked;
     setPosts(posts.map(p => p.id === postId ? { ...p, isLiked: !isCurrentlyLiked, likes: isCurrentlyLiked ? p.likes - 1 : p.likes + 1 } : p));
@@ -406,7 +468,11 @@ export default function Feeds() {
   };
 
   const toggleSave = async (postId: string) => {
-    if (!user) return alert("Sign in to save posts!");
+    if (!user) {
+      setAuthMessage("Sign in to save posts!");
+      setIsAuthModalOpen(true);
+      return;
+    }
     const post = posts.find(p => p.id === postId); if (!post) return;
     const isCurrentlySaved = post.isSaved;
     setPosts(posts.map(p => p.id === postId ? { ...p, isSaved: !isCurrentlySaved } : p));
@@ -417,6 +483,11 @@ export default function Feeds() {
   };
 
   const toggleStoryInteraction = (storyId: string, type: 'liked' | 'reposted') => {
+    if (!user) {
+      setAuthMessage("Sign in to interact with stories!");
+      setIsAuthModalOpen(true);
+      return;
+    }
     setStoryInteractions(prev => {
       const current = prev[storyId] || { liked: false, reposted: false };
       return { ...prev, [storyId]: { ...current, [type]: !current[type] } };
@@ -474,19 +545,21 @@ export default function Feeds() {
       
       {/* 0. LIVE STORIES SECTION */}
       <div className="flex items-center gap-4 overflow-x-auto scrollbar-hide pb-4 pt-2 -mx-2 px-2">
-        {/* ADD STORY BUTTON */}
-        <div className="flex flex-col items-center gap-2 shrink-0 cursor-pointer group" onClick={() => storyInputRef.current?.click()}>
-          <input type="file" accept="image/*,video/*" ref={storyInputRef} onChange={handleStoryUploadSelect} className="hidden" />
-          <div className="w-16 h-16 rounded-full border-4 border-[#e0e5ec] shadow-[5px_5px_10px_#a3b1c6,-5px_-5px_10px_#ffffff] bg-[#d1d8e0] flex items-center justify-center relative transition-transform group-hover:scale-105">
-            {isUploadingStory ? <Loader2 size={24} className="text-[#1da1f2] animate-spin" /> : <Building2 size={24} className="text-slate-400" />}
-            {!isUploadingStory && (
-              <div className="absolute bottom-0 right-0 w-5 h-5 bg-[#1da1f2] rounded-full border-2 border-[#e0e5ec] flex items-center justify-center text-white shadow-sm">
-                <Plus size={12} strokeWidth={4} />
-              </div>
-            )}
+        {/* ADD STORY BUTTON - HIDDEN FOR TOURISTS */}
+        {userRole !== 'tourist' && (
+          <div className="flex flex-col items-center gap-2 shrink-0 cursor-pointer group" onClick={() => storyInputRef.current?.click()}>
+            <input type="file" accept="image/*,video/*" ref={storyInputRef} onChange={handleStoryUploadSelect} className="hidden" />
+            <div className="w-16 h-16 rounded-full border-4 border-[#e0e5ec] shadow-[5px_5px_10px_#a3b1c6,-5px_-5px_10px_#ffffff] bg-[#d1d8e0] flex items-center justify-center relative transition-transform group-hover:scale-105">
+              {isUploadingStory ? <Loader2 size={24} className="text-[#1da1f2] animate-spin" /> : <Building2 size={24} className="text-slate-400" />}
+              {!isUploadingStory && (
+                <div className="absolute bottom-0 right-0 w-5 h-5 bg-[#1da1f2] rounded-full border-2 border-[#e0e5ec] flex items-center justify-center text-white shadow-sm">
+                  <Plus size={12} strokeWidth={4} />
+                </div>
+              )}
+            </div>
+            <span className="text-[10px] font-bold text-slate-600">Your Story</span>
           </div>
-          <span className="text-[10px] font-bold text-slate-600">Your Story</span>
-        </div>
+        )}
 
         {/* MAPPED DB STORIES */}
         {stories.map((story, index) => (
@@ -502,45 +575,47 @@ export default function Feeds() {
         ))}
       </div>
 
-      {/* 1. CREATE POST INPUT */}
-      <div className="relative z-10 mb-2">
-        <div className="bg-[#e0e5ec] rounded-3xl p-5 md:p-6 shadow-[9px_9px_16px_rgba(163,177,198,0.5),-9px_-9px_16px_rgba(0,0,0,0.1)]">
-          <div className="flex gap-4">
-            <div className="w-12 h-12 shrink-0 rounded-full border-4 border-[#e0e5ec] shadow-[3px_3px_6px_#a3b1c6,-3px_-3px_6px_#ffffff] overflow-hidden bg-[#d1d8e0] flex items-center justify-center cursor-pointer" onClick={() => navigate(`/profile/${user?.id}`)}>
-              {user?.avatarUrl ? <img src={user.avatarUrl} className="w-full h-full object-cover" /> : <Building2 size={20} className="text-slate-400" />}
-            </div>
-            <div className="flex-1 space-y-4">
-              <div className="relative">
-                <textarea 
-                  value={postText} onChange={(e) => setPostText(e.target.value)} disabled={isPosting}
-                  placeholder="Broadcast an RFP or share an update with the network..." 
-                  className="w-full bg-[#e0e5ec] text-sm font-medium text-slate-700 placeholder:text-slate-400 rounded-2xl py-4 px-5 shadow-[inset_3px_3px_6px_#a3b1c6,inset_-3px_-3px_6px_#ffffff] focus:outline-none resize-none min-h-[80px]"
-                />
+      {/* 1. CREATE POST INPUT - HIDDEN FOR TOURISTS */}
+      {userRole !== 'tourist' && (
+        <div className="relative z-10 mb-2">
+          <div className="bg-[#e0e5ec] rounded-3xl p-5 md:p-6 shadow-[9px_9px_16px_rgba(163,177,198,0.5),-9px_-9px_16px_rgba(0,0,0,0.1)]">
+            <div className="flex gap-4">
+              <div className="w-12 h-12 shrink-0 rounded-full border-4 border-[#e0e5ec] shadow-[3px_3px_6px_#a3b1c6,-3px_-3px_6px_#ffffff] overflow-hidden bg-[#d1d8e0] flex items-center justify-center cursor-pointer" onClick={() => navigate(`/profile/${user?.id}`)}>
+                {user?.avatarUrl ? <img src={user.avatarUrl} className="w-full h-full object-cover" /> : <Building2 size={20} className="text-slate-400" />}
               </div>
-              {imagePreview && (
-                <div className="relative w-32 h-32 rounded-2xl overflow-hidden shadow-[inset_3px_3px_6px_#a3b1c6,inset_-3px_-3px_6px_#ffffff] border-4 border-[#e0e5ec]">
-                  {isVideoUrl(selectedImage?.name || '') ? (
-                    <video src={imagePreview} className="w-full h-full object-cover opacity-80" />
-                  ) : (
-                    <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
-                  )}
-                  <button onClick={() => removeImage(false)} className="absolute top-2 right-2 p-1 bg-slate-900/50 backdrop-blur text-white rounded-full hover:bg-rose-500 transition-colors"><X size={14} /></button>
+              <div className="flex-1 space-y-4">
+                <div className="relative">
+                  <textarea 
+                    value={postText} onChange={(e) => setPostText(e.target.value)} disabled={isPosting}
+                    placeholder="Broadcast an RFP or share an update with the network..." 
+                    className="w-full bg-[#e0e5ec] text-sm font-medium text-slate-700 placeholder:text-slate-400 rounded-2xl py-4 px-5 shadow-[inset_3px_3px_6px_#a3b1c6,inset_-3px_-3px_6px_#ffffff] focus:outline-none resize-none min-h-[80px]"
+                  />
                 </div>
-              )}
-              <div className="flex items-center justify-between pt-1">
-                <input type="file" ref={fileInputRef} onChange={(e) => handleImageSelect(e, false)} accept="image/*,video/*" className="hidden" />
-                <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 rounded-xl text-slate-500 font-bold text-xs hover:text-[#1da1f2] hover:shadow-[inset_2px_2px_4px_#a3b1c6,inset_-2px_-2px_4px_#ffffff] transition-all"><ImageIcon size={16} /> <span className="hidden sm:inline">Attach Media</span></button>
-                <button disabled={(!postText.trim() && !selectedImage) || isPosting} onClick={handleCreatePost} className="flex items-center gap-2 px-6 py-2.5 bg-[#1da1f2] text-white rounded-xl font-bold text-sm shadow-[3px_3px_6px_#a3b1c6,-3px_-3px_6px_#ffffff] hover:bg-[#1a91da] active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.2)] transition-all disabled:opacity-50">
-                  {isPosting ? <Loader2 size={14} className="animate-spin" /> : <>Post <Send size={14} /></>}
-                </button>
+                {imagePreview && (
+                  <div className="relative w-32 h-32 rounded-2xl overflow-hidden shadow-[inset_3px_3px_6px_#a3b1c6,inset_-3px_-3px_6px_#ffffff] border-4 border-[#e0e5ec]">
+                    {isVideoUrl(selectedImage?.name || '') ? (
+                      <video src={imagePreview} className="w-full h-full object-cover opacity-80" />
+                    ) : (
+                      <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                    )}
+                    <button onClick={() => removeImage(false)} className="absolute top-2 right-2 p-1 bg-slate-900/50 backdrop-blur text-white rounded-full hover:bg-rose-500 transition-colors"><X size={14} /></button>
+                  </div>
+                )}
+                <div className="flex items-center justify-between pt-1">
+                  <input type="file" ref={fileInputRef} onChange={(e) => handleImageSelect(e, false)} accept="image/*,video/*" className="hidden" />
+                  <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 rounded-xl text-slate-500 font-bold text-xs hover:text-[#1da1f2] hover:shadow-[inset_2px_2px_4px_#a3b1c6,inset_-2px_-2px_4px_#ffffff] transition-all"><ImageIcon size={16} /> <span className="hidden sm:inline">Attach Media</span></button>
+                  <button disabled={(!postText.trim() && !selectedImage) || isPosting} onClick={handleCreatePost} className="flex items-center gap-2 px-6 py-2.5 bg-[#1da1f2] text-white rounded-xl font-bold text-sm shadow-[3px_3px_6px_#a3b1c6,-3px_-3px_6px_#ffffff] hover:bg-[#1a91da] active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.2)] transition-all disabled:opacity-50">
+                    {isPosting ? <Loader2 size={14} className="animate-spin" /> : <>Post <Send size={14} /></>}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* 2. THE FEED */}
-      <div className="space-y-6 mt-4">
+      <div className={`space-y-6 ${userRole === 'tourist' ? 'mt-2' : 'mt-4'}`}>
         {posts.map((post) => {
           const carouselIndex = carouselIndexes[post.id] || 0;
           const hasMedia = post.media_urls && post.media_urls.length > 0;
@@ -860,6 +935,8 @@ export default function Feeds() {
         </div>
       )}
 
+      {/* RENDER THE AUTH MODAL */}
+      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} message={authMessage} />
     </div>
   );
 }

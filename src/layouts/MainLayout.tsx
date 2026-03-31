@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { 
   Users, Calendar, MessageCircle, User as UserIcon, 
-  Bookmark, Briefcase, Bell, Plus, LogOut, LayoutList, LogIn,
+  Bookmark, Briefcase, Bell, Plus, LogOut, LayoutList,
   TrendingUp, MessageSquare, ShieldCheck, Loader2, WifiOff, Wifi, Compass, Home as HomeIcon,
   Heart, Eye, UserPlus, Info
 } from 'lucide-react';
@@ -24,7 +24,6 @@ const timeAgo = (dateString: string) => {
   return past.toLocaleDateString();
 };
 
-// Notification Icon & Text Mapper
 const getNotificationConfig = (type: string) => {
   switch (type?.toLowerCase()) {
     case 'like': return { icon: Heart, color: 'text-rose-500', bg: 'bg-rose-50', text: 'liked your post.' };
@@ -48,8 +47,34 @@ const MainLayout: React.FC = () => {
   const [authModalConfig, setAuthModalConfig] = useState({ isOpen: false, message: '' });
   const [hideBottomNav, setHideBottomNav] = useState(false);
   
+  // --- THE FLICKER FIX: PURE REACT STATE LOCK ---
+  const [isUpgrading, setIsUpgrading] = useState(() => localStorage.getItem('intended_role') === 'vendor');
+  
   const userRole = user?.role || 'tourist';
   
+  // --- THE NAME FIX: INTELLIGENT EXTRACTION ---
+  const rawUser = (user as any)?.raw || user || {};
+  const userMeta = (user as any)?.user_metadata || (user as any)?.raw?.user_metadata || {};
+  const userEmail = rawUser.email || (user as any)?.email || '';
+
+  let extractedName = [userMeta.first_name, userMeta.last_name].filter(Boolean).join(' ') || userMeta.full_name || userMeta.name;
+  
+  if (!extractedName && userEmail) {
+    const prefix = userEmail.split('@')[0];
+    extractedName = prefix
+      .replace(/[._0-9]/g, ' ') 
+      .trim()
+      .split(' ')
+      .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  }
+  const fallbackName = extractedName || 'Explorer';
+
+  const [sidebarProfile, setSidebarProfile] = useState<{name: string, avatar: string | null}>({ name: '', avatar: null });
+  
+  const finalDisplayName = sidebarProfile.name?.trim() ? sidebarProfile.name : fallbackName;
+  const displaySidebarAvatar = sidebarProfile.avatar || userMeta.avatar_url || userMeta.picture || null;
+
   const [unreadCount, setUnreadCount] = useState(0);
   const [isRecapOpen, setIsRecapOpen] = useState(false);
   const [popoverNotifs, setPopoverNotifs] = useState<any[]>([]); 
@@ -59,16 +84,50 @@ const MainLayout: React.FC = () => {
   const [isRestored, setIsRestored] = useState(false);
 
   const [isDashboardLoaded, setIsDashboardLoaded] = useState(false);
-  const isAppLoading = contextInitializing || (!!user && !isDashboardLoaded);
+  
+  const isAppLoading = contextInitializing || (!!user && !isDashboardLoaded) || isUpgrading;
 
   const [suggestedTeams, setSuggestedTeams] = useState<SuggestedTeam[]>([]);
   const [trendingPosts, setTrendingPosts] = useState<TrendingPost[]>([]);
 
-  const isHomePage = location.pathname === '/explore' || location.pathname === '/';
+  const isHomePage = location.pathname === '/feeds' || location.pathname === '/explore' || location.pathname === '/';
   const showMobileContextNav = ['/network', '/messages', '/bookings', '/groups'].includes(location.pathname);
   const isMessagesActive = location.pathname.startsWith('/messages');
   const hideRightSidebar = isHomePage || showMobileContextNav;
 
+  // ==========================================
+  // OAUTH ROLE CATCHER (BACKGROUND PROCESS)
+  // ==========================================
+  useEffect(() => {
+    if (contextInitializing || !user) return;
+
+    const intendedRole = localStorage.getItem('intended_role');
+    
+    if (intendedRole === 'vendor') {
+      setIsUpgrading(true); // Lock the loading screen
+
+      const processRole = async () => {
+        try {
+          if (userRole !== 'vendor') {
+            await supabase.auth.updateUser({ data: { role: 'vendor' } });
+          }
+        } catch (err) {
+          console.error("Failed to upgrade role:", err);
+        } finally {
+          localStorage.removeItem('intended_role');
+          window.location.href = '/onboarding'; // Navigate cleanly without dropping the lock
+        }
+      };
+      processRole();
+    } else if (intendedRole) {
+      localStorage.removeItem('intended_role');
+      setIsUpgrading(false);
+    }
+  }, [user, userRole, contextInitializing]);
+
+  // ==========================================
+  // ONLINE / OFFLINE LISTENERS
+  // ==========================================
   useEffect(() => {
     const handleOffline = () => { setIsOffline(true); setIsRestored(false); };
     const handleOnline = () => {
@@ -100,8 +159,21 @@ const MainLayout: React.FC = () => {
   };
 
   const handleLogout = async () => {
+    navigate('/feeds', { replace: true });
     await supabase.auth.signOut();
-    navigate('/explore');
+  };
+
+  const handleUpgradeToVendor = async () => {
+    if (!user) return;
+    if (!window.confirm("Ready to upgrade your account to a Business Partner?")) return;
+    
+    try {
+      await supabase.auth.updateUser({ data: { role: 'vendor' } });
+      window.location.href = '/onboarding'; 
+    } catch (error) {
+      console.error("Upgrade failed:", error);
+      alert("Could not upgrade account. Please try again.");
+    }
   };
 
   const handleMarkAllRead = async () => {
@@ -115,7 +187,8 @@ const MainLayout: React.FC = () => {
   // LIVE DASHBOARD DATA FETCHER
   // ==========================================
   useEffect(() => {
-    if (!user || !user.id) {
+    // Suspend DB queries if locked in upgrade transition
+    if (!user || !user.id || isUpgrading) {
       setIsDashboardLoaded(true);
       return;
     }
@@ -152,6 +225,17 @@ const MainLayout: React.FC = () => {
           return; 
         }
 
+        const { data: profile } = await supabase.from('profiles').select('company, first_name, last_name, avatar_url').eq('id', user.id).maybeSingle();
+        if (profile) {
+          let finalName = '';
+          if (userRole !== 'tourist' && profile.company) {
+            finalName = profile.company;
+          } else {
+            finalName = [profile.first_name, profile.last_name].filter(Boolean).join(' ');
+          }
+          setSidebarProfile({ name: finalName, avatar: profile.avatar_url });
+        }
+
         let userLat = (user as any).raw?.user_metadata?.latitude || 5.6037;
         let userLon = (user as any).raw?.user_metadata?.longitude || -0.1870;
 
@@ -159,14 +243,12 @@ const MainLayout: React.FC = () => {
         setUnreadCount(count || 0);
         await fetchLatestNotifs();
 
-        // 1. Fetch Suggested Teams
         const { data: suggestedData } = await supabase.rpc('discover_partners', {
           user_lat: userLat, user_lon: userLon, max_distance_km: 100
         });
         
         let filteredTeams = suggestedData ? suggestedData.filter((t: any) => t.id !== user.id).slice(0, 4) : [];
         
-        // Fallback: If no nearby partners, fetch global verified partners
         if (filteredTeams.length === 0) {
           const { data: fallbackData } = await supabase.from('profiles').select('id, company, business_type, avatar_url, is_verified').neq('id', user.id).order('is_verified', { ascending: false }).limit(4);
           if (fallbackData) filteredTeams = fallbackData;
@@ -180,7 +262,6 @@ const MainLayout: React.FC = () => {
           isVerified: t.is_verified || false
         })));
 
-        // 2. Fetch Real Trending Posts
         const { data: postsData } = await supabase
           .from('posts')
           .select('id, content, is_event, title, created_at, author:profiles(company, first_name, last_name, is_verified)')
@@ -192,7 +273,6 @@ const MainLayout: React.FC = () => {
             const authorInfo = Array.isArray(p.author) ? p.author[0] : p.author;
             const authorName = authorInfo?.company || `${authorInfo?.first_name || ''} ${authorInfo?.last_name || ''}`.trim() || 'Partner';
             
-            // Format Title smartly
             let displayTitle = p.content || 'Media Update';
             if (p.is_event && p.title) displayTitle = p.title;
             if (displayTitle.length > 45) displayTitle = displayTitle.substring(0, 45) + '...';
@@ -216,7 +296,6 @@ const MainLayout: React.FC = () => {
 
     initializeDashboardData();
 
-    // LIVE SUBSCRIPTION TO NOTIFICATIONS
     const notificationSubscription = supabase
       .channel('realtime_notifications')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, () => {
@@ -225,7 +304,7 @@ const MainLayout: React.FC = () => {
       }).subscribe();
 
     return () => { supabase.removeChannel(notificationSubscription); };
-  }, [user?.id]); 
+  }, [user?.id, isUpgrading, userRole]); 
 
   // ==========================================
   // THE ROUTE GUARD
@@ -234,22 +313,22 @@ const MainLayout: React.FC = () => {
     if (isAppLoading) return; 
 
     const path = location.pathname;
-    const publicPaths = ['/explore', '/auth', '/']; 
+    const publicPaths = ['/feeds', '/explore', '/auth', '/']; 
     const isViewingSomeoneElsesProfile = path.startsWith('/profile/') && path !== '/profile' && path !== '/profile/';
 
     if (!user && !publicPaths.includes(path) && !isViewingSomeoneElsesProfile) {
-      navigate('/explore', { replace: true });
+      navigate('/feeds', { replace: true });
       setAuthModalConfig({ isOpen: true, message: 'Sign in to access this page' });
       return;
     }
 
     if (user && userRole === 'tourist') {
-      const vendorTools = ['/feeds', '/network', '/groups'];
+      const vendorTools = ['/network', '/groups'];
       const isTryingToAccessVendorTools = vendorTools.some(r => path.startsWith(r));
       const isTryingToEditProfileDash = path === '/profile' || path === '/profile/';
 
       if (isTryingToAccessVendorTools || isTryingToEditProfileDash) {
-        navigate('/explore', { replace: true }); 
+        navigate('/feeds', { replace: true }); 
       }
     }
   }, [location.pathname, user, userRole, isAppLoading, navigate]);
@@ -259,7 +338,7 @@ const MainLayout: React.FC = () => {
       <div className="fixed inset-0 z-[99999] bg-slate-50 flex flex-col items-center justify-center">
         <div className="flex items-center gap-3 animate-pulse mb-6">
           <div className="w-8 h-8 rounded-full bg-[#1da1f2]"></div>
-          <span className="text-3xl font-black text-slate-800 tracking-tight">TeamUp<span className="text-[#1da1f2]">.</span></span>
+          <span className="text-3xl font-black text-slate-800 tracking-tight">TeamUrp<span className="text-[#1da1f2]">.</span></span>
         </div>
         <Loader2 size={32} className="animate-spin text-[#1da1f2]" />
       </div>
@@ -281,10 +360,11 @@ const MainLayout: React.FC = () => {
 
       {/* --- HEADER --- */}
       <header className="w-full h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 lg:px-8 shrink-0 z-50">
-        <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => navigate('/explore')}>
+        
+        <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => navigate('/feeds')}>
           <div className="w-5 h-5 rounded-full bg-[#1da1f2]"></div>
           <span className="text-xl font-black text-slate-800 tracking-tight">
-            TeamUp<span className="text-[#1da1f2]">.</span>
+            TeamUrp<span className="text-[#1da1f2]">.</span>
           </span>
         </div>
         
@@ -401,42 +481,69 @@ const MainLayout: React.FC = () => {
             <div className="flex-1 space-y-6">
               
               {user ? (
-                <div onClick={() => userRole !== 'tourist' && navigate('/profile')} className={`flex items-center gap-4 p-4 rounded-3xl bg-white border border-slate-200 ${userRole !== 'tourist' ? 'cursor-pointer hover:bg-slate-50' : ''} transition-all group shadow-sm`}>
-                  <div className="w-12 h-12 shrink-0 rounded-full overflow-hidden bg-slate-100 flex items-center justify-center border-2 border-white shadow-sm">
-                    {user.avatarUrl ? <img src={user.avatarUrl} className="w-full h-full object-cover" alt="Profile" /> : <UserIcon size={24} className="text-slate-400" />}
+                <>
+                  <div onClick={() => userRole !== 'tourist' && navigate('/profile')} className={`flex items-center gap-4 p-4 rounded-3xl bg-white border border-slate-200 ${userRole !== 'tourist' ? 'cursor-pointer hover:bg-slate-50' : ''} transition-all group shadow-sm`}>
+                    <div className="w-12 h-12 shrink-0 rounded-full overflow-hidden bg-slate-100 flex items-center justify-center border-2 border-white shadow-sm">
+                      {displaySidebarAvatar ? <img src={displaySidebarAvatar} className="w-full h-full object-cover" alt="Profile" /> : <UserIcon size={24} className="text-slate-400" />}
+                    </div>
+                    <div className="overflow-hidden flex-1">
+                      <h3 className="text-sm font-black text-slate-800 truncate">{finalDisplayName}</h3>
+                      {userRole === 'tourist' ? (
+                        <p className="text-[9px] font-bold text-blue-500 uppercase tracking-widest flex items-center gap-1 mt-0.5">
+                          <Compass size={10} /> Explorer
+                        </p>
+                      ) : (
+                        <p className="text-[9px] font-bold text-teal-600 uppercase tracking-widest flex items-center gap-1 mt-0.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Verified Partner
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <div className="overflow-hidden flex-1">
-                    <h3 className="text-sm font-black text-slate-800 truncate">{user.fullName || 'User'}</h3>
-                    {userRole === 'tourist' ? (
-                      <p className="text-[9px] font-bold text-blue-500 uppercase tracking-widest flex items-center gap-1 mt-0.5">
-                        <Compass size={10} /> Explorer
-                      </p>
-                    ) : (
-                      <p className="text-[9px] font-bold text-teal-600 uppercase tracking-widest flex items-center gap-1 mt-0.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Verified Partner
-                      </p>
-                    )}
-                  </div>
-                </div>
+
+                  {userRole === 'tourist' && (
+                    <button 
+                      onClick={handleUpgradeToVendor} 
+                      className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-bold text-xs shadow-[0_4px_15px_rgba(16,185,129,0.3)] hover:shadow-[0_6px_20px_rgba(16,185,129,0.4)] transition-all active:scale-95"
+                    >
+                      <Briefcase size={16} /> Upgrade to Partner
+                    </button>
+                  )}
+                </>
               ) : !contextInitializing ? (
-                <div className="p-5 rounded-3xl bg-white border border-slate-200 text-center shadow-sm">
-                  <h3 className="text-sm font-black text-slate-800 mb-1">Welcome to TeamUp</h3>
-                  <p className="text-xs text-slate-500 mb-4">Discover global tourism partners.</p>
-                  <button onClick={() => setAuthModalConfig({ isOpen: true, message: 'Sign in to your account' })} className="w-full flex items-center justify-center gap-2 py-3 bg-[#1da1f2] text-white rounded-xl font-bold text-xs hover:bg-[#1a91da] shadow-md transition-all active:scale-95">
-                    <LogIn size={14} /> Log In / Sign Up
+                <div className="p-5 rounded-3xl bg-white border border-slate-200 text-center shadow-sm space-y-3">
+                  <h3 className="text-sm font-black text-slate-800">Join TeamUrp</h3>
+                  <p className="text-xs text-slate-500 pb-2">Experience the world, or help others discover it.</p>
+                  
+                  <button 
+                    onClick={() => navigate('/signup?type=tourist')} 
+                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#1e222b] text-white rounded-xl font-bold text-xs hover:bg-[#2a2f3a] shadow-md transition-all active:scale-95"
+                  >
+                    <Compass size={14} /> Want more? Sign In
                   </button>
+
+                  <button 
+                    onClick={() => navigate('/signup?type=vendor')} 
+                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold text-xs hover:bg-slate-50 transition-all active:scale-95"
+                  >
+                    <Briefcase size={14} /> Become a Partner
+                  </button>
+
+                  <div className="pt-2 border-t border-slate-100 mt-2">
+                    <button onClick={() => navigate('/login')} className="text-xs font-bold text-[#1da1f2] hover:text-[#1a91da] transition-colors">
+                      Already have an account? Log In
+                    </button>
+                  </div>
                 </div>
               ) : null}
 
               <div>
                 <ul className="space-y-1">
+                  <SidebarItem icon={<LayoutList size={18} />} label="Live Feeds" active={location.pathname === '/feeds'} onClick={() => navigate('/feeds')} />
+                  
                   <SidebarItem icon={<HomeIcon size={18} />} label="Explore" active={location.pathname === '/explore'} onClick={() => navigate('/explore')} />
                   
                   {userRole !== 'tourist' && (
-                    <>
-                      <SidebarItem icon={<LayoutList size={18} />} label="Live Feeds" active={location.pathname === '/feeds'} onClick={() => navigate('/feeds')} />
-                      <SidebarItem icon={<Users size={18} />} label="Partner Network" active={location.pathname === '/network'} onClick={() => navigate('/network')} />
-                    </>
+                    <SidebarItem icon={<Users size={18} />} label="Partner Network" active={location.pathname === '/network'} onClick={() => navigate('/network')} />
                   )}
                   
                   <SidebarItem icon={<MessageCircle size={18} />} label="Messages" active={location.pathname.startsWith('/messages')} onClick={() => handleProtectedNavigation('/messages', 'Messages')} />

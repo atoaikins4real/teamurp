@@ -12,50 +12,33 @@ export const BottomNav: React.FC<BottomNavProps> = ({ onOpenPostModal, userRole 
   const location = useLocation();
 
   const isActive = (path: string) => {
-    if (path === '/explore' && location.pathname === '/') return true;
+    // Because root '/' now redirects to feeds, highlight the feeds tab if at root
+    if (path === '/feeds' && location.pathname === '/') return true;
     return location.pathname.startsWith(path);
   };
 
   return (
-    <div className="bg-white border-t border-slate-200 pb-safe">
+    <div className="bg-white border-t border-slate-200 pb-safe shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
       <div className="flex items-center justify-around h-16 px-2">
         
-        {/* 1. FIRST TAB: Explore (Tourists) OR Feeds (Partners) */}
-        {userRole === 'tourist' ? (
-          <NavItem 
-            icon={<Compass size={22} />} 
-            label="Explore" 
-            active={isActive('/explore')} 
-            onClick={() => navigate('/explore')} 
-          />
-        ) : (
-          <NavItem 
-            icon={<LayoutList size={22} />} 
-            label="Feeds" 
-            active={isActive('/feeds')} 
-            onClick={() => navigate('/feeds')} 
-          />
-        )}
+        {/* 1. FIRST TAB: Feeds (Universal) */}
+        <NavItem 
+          icon={<LayoutList size={22} />} 
+          label="Feeds" 
+          active={isActive('/feeds')} 
+          onClick={() => navigate('/feeds')} 
+        />
 
-        {/* 2. SECOND TAB: Bookings (Tourists) OR Explore (Partners) */}
-        {userRole === 'tourist' ? (
-          <NavItem 
-            icon={<Calendar size={22} />} 
-            label="Bookings" 
-            active={isActive('/bookings')} 
-            onClick={() => navigate('/bookings')} 
-          />
-        ) : (
-          <NavItem 
-            icon={<Compass size={22} />} 
-            label="Explore" 
-            active={isActive('/explore')} 
-            onClick={() => navigate('/explore')} 
-          />
-        )}
+        {/* 2. SECOND TAB: Explore (Universal) */}
+        <NavItem 
+          icon={<Compass size={22} />} 
+          label="Explore" 
+          active={isActive('/explore')} 
+          onClick={() => navigate('/explore')} 
+        />
 
-        {/* 3. CENTER ACTION: Hidden for Tourists, 'Post' Button for Partners */}
-        {userRole !== 'tourist' && (
+        {/* 3. CENTER ACTION: 'Post' Button for Partners OR 'Bookings' for Tourists */}
+        {userRole !== 'tourist' ? (
           <div className="relative -top-5 flex justify-center w-16 shrink-0">
             <button
               onClick={onOpenPostModal}
@@ -64,6 +47,13 @@ export const BottomNav: React.FC<BottomNavProps> = ({ onOpenPostModal, userRole 
               <Plus size={24} strokeWidth={3} />
             </button>
           </div>
+        ) : (
+          <NavItem 
+            icon={<Calendar size={22} />} 
+            label="Bookings" 
+            active={isActive('/bookings')} 
+            onClick={() => navigate('/bookings')} 
+          />
         )}
 
         {/* 4. FOURTH TAB: Messages (Universal) */}
@@ -95,7 +85,9 @@ const NavItem = ({ icon, label, active, onClick }: any) => (
       active ? 'text-[#1da1f2]' : 'text-slate-400 hover:text-slate-600'
     }`}
   >
-    {icon}
+    {React.cloneElement(icon, { 
+      className: active ? 'drop-shadow-sm scale-110 transition-transform' : 'transition-transform' 
+    })}
     <span className="text-[10px] font-bold tracking-wide">{label}</span>
   </button>
 );

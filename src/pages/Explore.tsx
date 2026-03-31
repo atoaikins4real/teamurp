@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import { HeatmapLayer } from '../components/HeatmapLayer';
 import { MapContainer, TileLayer, Marker, useMapEvents, ZoomControl, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
@@ -10,7 +10,7 @@ import {
   Filter, X, LocateFixed, Map as MapIcon, Grid, Building2,
   AlertTriangle, Palmtree, DollarSign, TrendingUp, Utensils, Home, Compass,
   ArrowLeft, Heart, Bookmark, Clock, Plane, Train, Bike, ChevronLeft, ChevronRight,
-  ShoppingCart, HeartPulse, Layers, Calendar
+  ShoppingCart, HeartPulse, Layers, Calendar, Maximize
 } from 'lucide-react';
 import { supabase } from '../lib/supabase'; 
 import { useTenant } from '../contexts/TenantContext';
@@ -25,7 +25,7 @@ let globalExploreCache = {
 
 // --- HELPERS & CONSTANTS ---
 const isVideoUrl = (url: string) => url?.match(/\.(mp4|webm|ogg|mov)(\?.*)?$/i) !== null;
-const ACCRA_CENTER: [number, number] = [5.6037, -0.1870];
+const DEFAULT_CENTER: [number, number] = [5.6037, -0.1870]; // Accra Fallback
 
 const MAP_STYLES = {
   light: { name: 'Minimal', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png' },
@@ -106,6 +106,8 @@ export default function Explore() {
   const { user, initializing } = useTenant();
   const navigate = useNavigate();
   
+  const { setHideBottomNav } = useOutletContext<any>() || {};
+  
   const [activeTab, setActiveTab] = useState<'map' | 'grid'>('map');
   const [assets, setAssets] = useState<any[]>([]);
   const [filteredAssets, setFilteredAssets] = useState<any[]>([]);
@@ -124,6 +126,7 @@ export default function Explore() {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
+  const [mapCenter, setMapCenter] = useState<[number, number]>(DEFAULT_CENTER);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [activeMapStyle, setActiveMapStyle] = useState<keyof typeof MAP_STYLES>('light');
@@ -141,9 +144,8 @@ export default function Explore() {
   const [modalPage, setModalPage] = useState<1 | 2>(1);
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
 
-  // NEW: Modal Image Gallery State
   const [modalImageIndex, setModalImageIndex] = useState(0);
-
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [modalIsLiked, setModalIsLiked] = useState(false);
   const [modalIsSaved, setModalIsSaved] = useState(false);
 
@@ -154,6 +156,17 @@ export default function Explore() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   useEffect(() => {
+    if (setHideBottomNav) {
+      if (detailModalAsset || isFullscreen) {
+        setHideBottomNav(true);
+      } else {
+        setHideBottomNav(false);
+      }
+    }
+    return () => setHideBottomNav?.(false);
+  }, [detailModalAsset, isFullscreen, setHideBottomNav]);
+
+  useEffect(() => {
     if (detailModalAsset) {
       setModalPage(1);
       setModalSearchQuery('');
@@ -161,11 +174,11 @@ export default function Explore() {
       setModalTransit(null);
       setModalIsLiked(false);
       setModalIsSaved(false);
-      setModalImageIndex(0); // Reset gallery index
+      setModalImageIndex(0); 
+      setIsFullscreen(false); 
     }
   }, [detailModalAsset]);
 
-  // Consolidate all media for the active modal
   const modalMediaList = useMemo(() => {
     if (!detailModalAsset) return [];
     const media = detailModalAsset.post_media || [];
@@ -183,8 +196,16 @@ export default function Explore() {
       });
   }, [filteredAssets]);
 
+  // ==========================================================
+  // 1. INITIAL LOAD
+  // ==========================================================
   useEffect(() => {
     if (initializing) return;
+
+    // --- THE FIX: Instantly reset location mode if they log out ---
+    if (!user) {
+      setNeedsLocation(false);
+    }
 
     const initExplore = async () => {
       const now = Date.now();
@@ -197,19 +218,26 @@ export default function Explore() {
       }
 
       try {
-        let currentLat = ACCRA_CENTER[0]; 
-        let currentLon = ACCRA_CENTER[1];
+        let currentLat = DEFAULT_CENTER[0]; 
+        let currentLon = DEFAULT_CENTER[1];
 
         if (user) {
-          const { data: profile } = await supabase.from('profiles').select('latitude, longitude, user_role').eq('id', user.id).maybeSingle();
-          
-          if (profile && !profile.latitude && profile.user_role !== 'tourist') {
-            setNeedsLocation(true);
-          }
-          
-          if (profile?.latitude && profile?.longitude) {
-            currentLat = parseFloat(profile.latitude);
-            currentLon = parseFloat(profile.longitude);
+          // Check if they are a vendor vs a tourist based on our global TenantContext state FIRST
+          const isVendor = user.role !== 'tourist';
+
+          if (isVendor) {
+            // ONLY query the profiles table if they are a vendor to check for missing location
+            const { data: profile } = await supabase.from('profiles').select('latitude, longitude').eq('id', user.id).maybeSingle();
+            
+            if (profile && !profile.latitude) {
+              setNeedsLocation(true);
+            }
+            
+            if (profile?.latitude && profile?.longitude) {
+              currentLat = parseFloat(profile.latitude);
+              currentLon = parseFloat(profile.longitude);
+              setMapCenter([currentLat, currentLon]); 
+            }
           }
 
           const { data: followData } = await supabase.from('follows').select('following_id').eq('follower_id', user.id);
@@ -251,6 +279,40 @@ export default function Explore() {
     };
     initExplore();
   }, [user, initializing]);
+
+  useEffect(() => {
+    if (mapInstance && !userLocation && !needsLocation) {
+      if ('geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            
+            setUserLocation([lat, lng]);
+            mapInstance.flyTo([lat, lng], 14, { duration: 1.5 });
+
+            try {
+              const { data: nearbyPartners } = await supabase.rpc('discover_partners', {
+                user_lat: lat, user_lon: lng, max_distance_km: 100 
+              });
+
+              if (nearbyPartners && nearbyPartners.length > 0) {
+                setAssets(nearbyPartners);
+                globalExploreCache.assets = nearbyPartners;
+                globalExploreCache.timestamp = Date.now();
+              }
+            } catch (err) {
+              console.error("Failed to fetch nearby partners", err);
+            }
+          },
+          (error) => {
+            console.log("Auto-location skipped or denied:", error.message);
+          },
+          { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 }
+        );
+      }
+    }
+  }, [mapInstance, needsLocation, userLocation]);
 
   useEffect(() => {
     let results = [...assets];
@@ -300,7 +362,6 @@ export default function Explore() {
     }
   }, [activeFilter, touristFilter, showOnlyFollowing, showSavedOnly, searchQuery, isPriceSorted, assets, user, followedIds, savedPartnerIds, selectedIndex]);
 
-  // --- SMART NEARBY MODAL SUGGESTIONS (FULLY FUNCTIONAL PAGE 2) ---
   const modalSuggestions = useMemo(() => {
     if (!detailModalAsset) return [];
     
@@ -317,7 +378,6 @@ export default function Explore() {
         isNearby = getDistance(detailModalAsset.latitude, detailModalAsset.longitude, postLat, postLon) <= 50;
       }
 
-      // Robust Search Filter
       let matchesSearch = true;
       if (modalSearchQuery.trim()) {
         const q = modalSearchQuery.toLowerCase();
@@ -329,7 +389,6 @@ export default function Explore() {
         );
       }
 
-      // Robust Category Filter
       let matchesCat = true;
       if (modalCategory !== 'all') {
         const bt = authorInfo?.business_type?.toLowerCase() || '';
@@ -339,7 +398,6 @@ export default function Explore() {
         else if (modalCategory === 'ocean') matchesCat = bt.includes('beach') || bt.includes('resort') || pt.includes('water');
       }
 
-      // Robust Transit Filter
       let matchesTransit = true;
       if (modalTransit) {
         const bt = authorInfo?.business_type?.toLowerCase() || '';
@@ -641,7 +699,7 @@ export default function Explore() {
       
       {/* A. MAP VIEW */}
       <div className={`w-full h-full transition-opacity duration-300 ${activeTab === 'map' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-        <MapContainer center={ACCRA_CENTER} zoom={13} className="w-full h-full z-0" zoomControl={false} attributionControl={false}>
+        <MapContainer center={mapCenter} zoom={13} className="w-full h-full z-0" zoomControl={false} attributionControl={false}>
           <TileLayer url={MAP_STYLES[activeMapStyle].url} />
           <MapController />
 
@@ -660,7 +718,6 @@ export default function Explore() {
             const lon = Number(asset.longitude);
             if (isNaN(lat) || isNaN(lon)) return null;
 
-            // Mark red if they have an active event
             const hasEvent = explorePosts.some(p => p.author_id === asset.id && p.is_event);
             const iconColor = hasEvent ? '#ef4444' : '#1da1f2';
 
@@ -851,18 +908,17 @@ export default function Explore() {
 
       {/* 4. ASSET DETAIL QUICK-VIEW MODAL */}
       {detailModalAsset && (
-        <div className="fixed inset-0 z-[2000] flex items-end sm:items-center justify-center sm:p-4">
+        <div className="fixed inset-0 z-[99999] flex items-end sm:items-center justify-center sm:p-4">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setDetailModalAsset(null)} />
           
+          {/* Changed h-[90vh] to h-[90dvh] to fix Safari bottom clipping */}
           <div 
             onTouchStart={(e) => setTouchStartY(e.touches[0].clientY)}
             onTouchEnd={handleTouchEnd}
-            className="w-full h-[90vh] sm:h-[80vh] sm:max-h-[800px] max-w-[400px] bg-slate-50 sm:rounded-[2.5rem] rounded-t-[2.5rem] relative z-10 overflow-hidden flex flex-col shadow-2xl animate-in slide-in-from-bottom-full duration-300"
+            className="w-full h-[90dvh] sm:h-[80vh] sm:max-h-[800px] max-w-[400px] bg-slate-50 sm:rounded-[2.5rem] rounded-t-[2.5rem] relative z-10 overflow-hidden flex flex-col shadow-2xl animate-in slide-in-from-bottom-full duration-300"
           >
-            <div className="absolute top-4 left-4 right-4 z-50 flex justify-between items-center pointer-events-none">
-               <button onClick={() => modalPage === 2 ? setModalPage(1) : setDetailModalAsset(null)} className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-full text-white flex items-center justify-center hover:bg-white/40 transition-colors pointer-events-auto shadow-sm border border-white/20">
-                 {modalPage === 2 ? <ArrowLeft size={20} /> : <X size={20} />}
-               </button>
+            {/* Top Bar - Likes & Bookmarks */}
+            <div className="absolute top-4 left-4 right-4 z-50 flex justify-end items-center pointer-events-none">
                <div className="flex gap-2">
                  <button onClick={() => setModalIsLiked(!modalIsLiked)} className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-full text-white flex items-center justify-center hover:bg-white/40 transition-colors pointer-events-auto shadow-sm border border-white/20">
                    <Heart size={18} className={modalIsLiked ? "fill-rose-500 text-rose-500" : ""} />
@@ -873,19 +929,25 @@ export default function Explore() {
                </div>
             </div>
 
+            {/* Sliding Content Container (Stops BEFORE the bottom action bar) */}
             <div className="flex-1 w-full flex transition-transform duration-500 ease-in-out" style={{ transform: `translateX(-${(modalPage - 1) * 100}%)` }}>
               
               {/* --- PAGE 1: DETAILS --- */}
-              <div className="w-full h-full flex-shrink-0 overflow-y-auto custom-scrollbar flex flex-col pb-6 relative bg-slate-50">
+              <div className="w-full h-full flex-shrink-0 overflow-y-auto custom-scrollbar flex flex-col pb-24 relative bg-slate-50">
                 
                 {/* GALLERY HEADER */}
-                <div className="h-[45%] min-h-[250px] w-full relative shrink-0 bg-slate-900 flex items-center justify-center overflow-hidden">
+                <div className="h-[45%] min-h-[250px] w-full relative shrink-0 bg-slate-900 flex items-center justify-center overflow-hidden cursor-pointer group" onClick={() => setIsFullscreen(true)}>
+                  
+                  <button onClick={(e) => { e.stopPropagation(); setIsFullscreen(true); }} className="absolute top-4 left-4 z-20 w-10 h-10 bg-black/40 backdrop-blur-md rounded-full text-white flex items-center justify-center hover:bg-black/60 transition-colors shadow-sm border border-white/20 opacity-0 group-hover:opacity-100">
+                    <Maximize size={18} />
+                  </button>
+
                   <img src={modalMediaList[modalImageIndex]} className="absolute inset-0 w-full h-full object-cover blur-2xl opacity-40 scale-125 pointer-events-none" />
                   
                   {isVideoUrl(modalMediaList[modalImageIndex]) ? (
-                    <video src={modalMediaList[modalImageIndex]} autoPlay muted loop className="relative z-10 w-full h-full object-contain" />
+                    <video src={modalMediaList[modalImageIndex]} autoPlay muted loop className="relative z-10 w-full h-full object-contain pointer-events-none" />
                   ) : (
-                    <img src={modalMediaList[modalImageIndex]} className="relative z-10 w-full h-full object-contain" />
+                    <img src={modalMediaList[modalImageIndex]} className="relative z-10 w-full h-full object-contain pointer-events-none" />
                   )}
                   
                   <div className="absolute inset-0 bg-gradient-to-t from-[#111827] via-transparent to-black/30 pointer-events-none z-10" />
@@ -903,12 +965,12 @@ export default function Explore() {
                   
                   <div className="absolute bottom-4 left-12 right-12 bg-white/20 backdrop-blur-md p-2 rounded-2xl flex justify-center gap-2 overflow-x-auto scrollbar-hide shadow-lg border border-white/20 z-20">
                      {modalMediaList.slice(0, 3).map((url: string, i: number) => (
-                       <div key={i} onClick={() => setModalImageIndex(i)} className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl shrink-0 overflow-hidden shadow-sm cursor-pointer transition-all ${modalImageIndex === i ? 'border-2 border-[#1da1f2] scale-105' : 'bg-slate-200 opacity-80 hover:opacity-100'}`}>
+                       <div key={i} onClick={(e) => { e.stopPropagation(); setModalImageIndex(i); }} className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl shrink-0 overflow-hidden shadow-sm cursor-pointer transition-all ${modalImageIndex === i ? 'border-2 border-[#1da1f2] scale-105' : 'bg-slate-200 opacity-80 hover:opacity-100'}`}>
                          {isVideoUrl(url) ? <video src={url} className="w-full h-full object-cover" /> : <img src={url} className="w-full h-full object-cover"/>}
                        </div>
                      ))}
                      {modalMediaList.length > 3 && (
-                       <div onClick={() => setModalImageIndex(3)} className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-slate-900/50 backdrop-blur shrink-0 flex items-center justify-center text-white font-bold shadow-sm relative overflow-hidden cursor-pointer ${modalImageIndex >= 3 ? 'border-2 border-[#1da1f2] scale-105' : 'opacity-80 hover:opacity-100'}`}>
+                       <div onClick={(e) => { e.stopPropagation(); setModalImageIndex(3); }} className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-slate-900/50 backdrop-blur shrink-0 flex items-center justify-center text-white font-bold shadow-sm relative overflow-hidden cursor-pointer ${modalImageIndex >= 3 ? 'border-2 border-[#1da1f2] scale-105' : 'opacity-80 hover:opacity-100'}`}>
                          <img src={modalMediaList[3]} className="absolute inset-0 w-full h-full object-cover opacity-50"/>
                          <span className="relative z-10 text-xs">+{modalMediaList.length - 3}</span>
                        </div>
@@ -968,25 +1030,11 @@ export default function Explore() {
                       </div>
                     )}
                   </div>
-
-                  {/* NAVIGATE TO PAGE 2 BUTTON */}
-                  <div className="mt-auto mb-4 flex justify-center">
-                    <button onClick={() => setModalPage(2)} className="w-12 h-12 bg-white shadow-[0_4px_12px_rgba(0,0,0,0.1)] rounded-full text-slate-800 flex items-center justify-center border border-slate-200 active:scale-95 transition-all hover:bg-slate-50 animate-bounce">
-                      <ChevronRight size={28} className="ml-0.5" />
-                    </button>
-                  </div>
-
-                  <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden bg-slate-200 h-20 sm:h-24 flex items-center justify-center p-6 cursor-pointer hover:bg-slate-300 transition-colors" onClick={() => handleBookNow(detailModalAsset)}>
-                    <div className="absolute inset-0 opacity-40 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]" />
-                    <button className="relative z-10 w-full py-3 sm:py-5 bg-[#222] hover:bg-black text-white rounded-full font-bold text-sm sm:text-[15px] flex items-center justify-center gap-2 shadow-xl transition-all">
-                      {detailModalAsset.is_event ? 'Book Seat Now' : 'Book Now'} <ArrowRight size={16} />
-                    </button>
-                  </div>
                 </div>
               </div>
 
               {/* --- PAGE 2: DISCOVER --- */}
-              <div className="w-full h-full flex-shrink-0 bg-slate-50 overflow-y-auto custom-scrollbar pt-16 px-5 pb-6 flex flex-col">
+              <div className="w-full h-full flex-shrink-0 bg-slate-50 overflow-y-auto custom-scrollbar pt-8 px-5 pb-24 flex flex-col">
                 <div className="flex justify-between items-start mb-6">
                    <h2 className="text-2xl sm:text-3xl font-black text-slate-900 leading-tight">Discover<br/>interesting places</h2>
                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full overflow-hidden bg-slate-200 shrink-0 border border-slate-200 shadow-sm cursor-pointer" onClick={() => navigate('/profile')}>
@@ -1050,10 +1098,53 @@ export default function Explore() {
                     </div>
                   ))}
                 </div>
-
               </div>
             </div>
+
+            {/* --- NEW STICKY BOTTOM ACTION BAR --- */}
+            <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-100 px-5 pt-4 pb-8 sm:pb-5 flex items-center gap-3 z-50 rounded-b-[2.5rem]">
+              {modalPage === 1 ? (
+                <>
+                  <button onClick={() => setDetailModalAsset(null)} className="w-12 h-12 rounded-full bg-slate-100 hover:bg-rose-50 hover:text-rose-500 text-slate-500 flex items-center justify-center shrink-0 transition-colors">
+                    <X size={20} />
+                  </button>
+                  <button onClick={() => handleBookNow(detailModalAsset)} className="flex-1 h-12 bg-[#222] hover:bg-black text-white rounded-full font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95">
+                    {detailModalAsset.is_event ? 'Book Seat' : 'Book Now'} <ArrowRight size={16} />
+                  </button>
+                  <button onClick={() => setModalPage(2)} className="w-12 h-12 rounded-full bg-blue-50 text-[#1da1f2] hover:bg-blue-100 flex items-center justify-center shrink-0 transition-colors shadow-inner">
+                    <Compass size={20} />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => setModalPage(1)} className="w-12 h-12 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center shrink-0 transition-colors">
+                    <ArrowLeft size={20} />
+                  </button>
+                  <button onClick={() => handleBookNow(detailModalAsset)} className="flex-1 h-12 bg-[#222] hover:bg-black text-white rounded-full font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95">
+                    {detailModalAsset.is_event ? 'Book Seat' : 'Book Now'} <ArrowRight size={16} />
+                  </button>
+                  <button onClick={() => setDetailModalAsset(null)} className="w-12 h-12 rounded-full bg-slate-100 hover:bg-rose-50 hover:text-rose-500 text-slate-500 flex items-center justify-center shrink-0 transition-colors">
+                    <X size={20} />
+                  </button>
+                </>
+              )}
+            </div>
+
           </div>
+        </div>
+      )}
+
+      {/* NEW: FULLSCREEN MEDIA VIEWER OVERLAY */}
+      {isFullscreen && (
+        <div className="fixed inset-0 z-[100000] bg-black/95 backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-200" onClick={() => setIsFullscreen(false)}>
+          <button className="absolute top-6 right-6 z-50 w-12 h-12 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-white transition-colors">
+            <X size={28} />
+          </button>
+          {isVideoUrl(modalMediaList[modalImageIndex]) ? (
+            <video src={modalMediaList[modalImageIndex]} autoPlay controls className="max-w-[95vw] max-h-[95vh] object-contain rounded-xl shadow-2xl" onClick={(e) => e.stopPropagation()} />
+          ) : (
+            <img src={modalMediaList[modalImageIndex]} className="max-w-[95vw] max-h-[95vh] object-contain rounded-xl shadow-2xl cursor-zoom-out" onClick={() => setIsFullscreen(false)} />
+          )}
         </div>
       )}
 

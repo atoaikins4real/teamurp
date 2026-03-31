@@ -45,9 +45,9 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRoles }) 
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Wrong role? Kick them back to explore.
+  // Wrong role? Kick them back to feeds safely.
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/explore" replace />;
+    return <Navigate to="/feeds" replace />;
   }
 
   return <Outlet />;
@@ -71,8 +71,8 @@ function AppRouter() {
       <Route element={<MainLayout />}>
         
         {/* 🟢 PUBLIC ZONE (Guests & All Users) */}
-        {/* THE MAGIC FIX: Root URL instantly redirects to Explore */}
-        <Route path="/" element={<Navigate to="/explore" replace />} />
+        <Route path="/" element={<Navigate to="/feeds" replace />} />
+        <Route path="/feeds" element={<Feeds />} /> {/* <--- FEEDS IS NOW PUBLIC */}
         <Route path="/explore" element={<Explore />} />
         
         {/* 🔴 ALL LOGGED-IN USERS (Tourists & Vendors) */}
@@ -86,7 +86,6 @@ function AppRouter() {
 
         {/* 🟣 PARTNERS / VENDORS ONLY */}
         <Route element={<ProtectedRoute allowedRoles={['partner', 'vendor']} />}>
-          <Route path="/feeds" element={<Feeds />} />
           <Route path="/recap" element={<Recap />} />
           <Route path="/groups" element={<Groups />} />
           <Route path="/network" element={<Network />} />
@@ -95,7 +94,7 @@ function AppRouter() {
       </Route>
 
       {/* Fallback Catch-All */}
-      <Route path="*" element={<Navigate to="/explore" replace />} />
+      <Route path="*" element={<Navigate to="/feeds" replace />} />
     </Routes>
   );
 }
