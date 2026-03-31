@@ -4,7 +4,7 @@ import {
   MapPin, Edit3, Briefcase, Star, Building2, LogOut, Mail, Sparkles, 
   Heart, MessageCircle, Repeat, Bookmark, LayoutList, Edit2, Trash2,
   UserPlus, UserCheck, ChevronLeft, ChevronRight, X, Send, Loader2, Settings,
-  Globe, Phone, Calendar, Users as UsersIcon
+  Globe, Phone, Calendar, Users as UsersIcon,
 } from 'lucide-react';
 import { useTenant } from '../contexts/TenantContext';
 import { supabase } from '../lib/supabase';
@@ -773,11 +773,11 @@ export default function Profile() {
       </div>
 
       {/* PROFILE CARD */}
-      <div className="bg-[#e0e5ec] border border-white/50 rounded-3xl overflow-hidden shadow-[9px_9px_16px_#a3b1c6,-9px_-9px_16px_#ffffff] mb-6">
+      <div className="bg-[#e0e5ec] border border-white/50 rounded-3xl overflow-hidden shadow-[9px_9px_16px_#a3b1c6,-9px_-9px_16px_#ffffff] mb-6 pb-6">
         
         {/* COVER SECTION */}
         <div 
-          className={`h-40 md:h-48 w-full bg-[#1e222b] relative overflow-hidden flex items-center justify-center ${coverPreview ? 'cursor-pointer' : ''}`}
+          className={`h-32 md:h-40 w-full bg-[#1e222b] relative overflow-hidden flex items-center justify-center ${coverPreview ? 'cursor-pointer' : ''}`}
           onClick={() => coverPreview && setProfileLightbox({ urls: [coverPreview], index: 0 })}
         >
           {coverPreview ? (
@@ -796,10 +796,11 @@ export default function Profile() {
           )}
         </div>
 
-        <div className="px-6 pb-8 relative">
+        {/* INSTAGRAM-STYLE HEADER ROW (Avatar + Stats) */}
+        <div className="flex justify-between items-end px-6 relative z-10">
           
-          {/* AVATAR SECTION WITH STORY GRADIENT */}
-          <div className="relative w-28 h-28 md:w-32 md:h-32 -mt-14 md:-mt-16 z-10 inline-block">
+          {/* AVATAR */}
+          <div className="relative w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 -mt-10 sm:-mt-12 md:-mt-14 inline-block shrink-0">
             <div 
               onClick={handleAvatarClick}
               className={`w-full h-full rounded-full p-1 cursor-pointer transition-transform hover:scale-105 ${
@@ -810,7 +811,7 @@ export default function Profile() {
                  {avatarPreview ? (
                    <img src={avatarPreview} alt="Avatar" className="w-full h-full object-cover" />
                  ) : (
-                   <Building2 size={48} className="text-slate-400" />
+                   <Building2 size={40} className="text-slate-400" />
                  )}
               </div>
             </div>
@@ -820,147 +821,146 @@ export default function Profile() {
                 onClick={(e) => { e.stopPropagation(); avatarInputRef.current?.click(); }}
                 className="absolute bottom-1 right-1 p-2 bg-[#e0e5ec] text-[#1da1f2] rounded-full shadow-[3px_3px_6px_#a3b1c6,-3px_-3px_6px_#ffffff] hover:shadow-[inset_2px_2px_4px_#a3b1c6,inset_-2px_-2px_4px_#ffffff] transition-all border border-white/50 z-20"
               >
-                <Edit3 size={14} />
+                <Edit3 size={12} />
               </button>
             )}
           </div>
 
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-6 md:gap-8">
-            <div className="md:col-span-7">
-              <div className="flex items-center gap-2">
-                <h2 className="text-2xl font-bold text-slate-900">{profileData.company || profileData.fullName}</h2>
-                <span title="Premium Partner" className="flex items-center justify-center w-6 h-6 rounded-full bg-amber-100 text-amber-500 shadow-sm">
-                  <Sparkles size={12} />
-                </span>
-              </div>
-              
-              <div className="flex items-center gap-3 mt-1 mb-3">
-                <p className="text-[15px] text-slate-800 font-medium">{displayBusinessType}</p>
-                <div className="flex items-center gap-1 text-[11px] font-black text-slate-600 bg-[#d1d8e0] px-2 py-0.5 rounded-full shadow-inner">
-                  <Star size={10} className="fill-amber-400 text-amber-400" /> 4.9
-                </div>
-              </div>
-
-              {/* RICH PROFILE DETAILS */}
-              <div className="flex flex-wrap gap-x-4 gap-y-2 mb-4">
-                {profileData.location && (
-                  <p className="text-sm font-semibold text-slate-500 flex items-center gap-1.5">
-                    <MapPin size={14} className="text-[#1da1f2]"/> {profileData.location}
-                  </p>
-                )}
-                {profileData.website && (
-                  <a href={profileData.website.startsWith('http') ? profileData.website : `https://${profileData.website}`} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-slate-500 hover:text-[#1da1f2] flex items-center gap-1.5 transition-colors">
-                    <Globe size={14} className="text-[#1da1f2]"/> {profileData.website.replace(/^https?:\/\//, '')}
-                  </a>
-                )}
-                {profileData.phone && (
-                  <p className="text-sm font-semibold text-slate-500 flex items-center gap-1.5">
-                    <Phone size={14} className="text-[#1da1f2]"/> {profileData.phone}
-                  </p>
-                )}
-                {profileData.year_established && (
-                  <p className="text-sm font-semibold text-slate-500 flex items-center gap-1.5">
-                    <Calendar size={14} className="text-[#1da1f2]"/> Est. {profileData.year_established}
-                  </p>
-                )}
-                {profileData.team_size && (
-                  <p className="text-sm font-semibold text-slate-500 flex items-center gap-1.5">
-                    <UsersIcon size={14} className="text-[#1da1f2]"/> {profileData.team_size}
-                  </p>
-                )}
-              </div>
-              
-              {profileData.primary_service && (
-                <div className="mb-4">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-100 text-[#1da1f2] text-[11px] font-black rounded-full uppercase tracking-widest shadow-sm">
-                    <Briefcase size={12} /> {profileData.primary_service}
-                  </span>
-                </div>
-              )}
-
-              {profileData.bio && (
-                <p className="text-sm text-slate-600 mb-5 font-medium leading-relaxed bg-white/40 p-4 rounded-2xl border border-white/60">
-                  {profileData.bio}
-                </p>
-              )}
-
-              <div className="flex items-center gap-4 text-[13px] font-medium text-slate-500 mb-5">
-                <div className="cursor-pointer hover:text-[#1da1f2] transition-colors">
-                  <span className="text-slate-900 font-black text-[15px]">{followersCount}</span> Followers
-                </div>
-                <div className="cursor-pointer hover:text-[#1da1f2] transition-colors">
-                  <span className="text-slate-900 font-black text-[15px]">{followingCount}</span> Following
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-3 mt-2">
-                {profileData.isPartner ? (
-                  <>
-                    <button 
-                      onClick={handleFollow}
-                      className={`px-6 py-2 rounded-full font-bold text-sm shadow-[3px_3px_6px_#a3b1c6,-3px_-3px_6px_#ffffff] transition-all flex items-center gap-2 ${
-                        isFollowing ? 'bg-[#d1d8e0] text-[#1da1f2] shadow-[inset_2px_2px_4px_#a3b1c6,inset_-2px_-2px_4px_#ffffff]' : 'bg-[#1da1f2] text-white hover:bg-[#1a91da]'
-                      }`}
-                    >
-                      {isFollowing ? <UserCheck size={16} /> : <UserPlus size={16} />}
-                      {isFollowing ? 'Following' : 'Follow'}
-                    </button>
-                    <button 
-                      onClick={handleMessageClick}
-                      className="px-6 py-2 bg-[#e0e5ec] text-slate-700 rounded-full font-bold text-sm shadow-[3px_3px_6px_#a3b1c6,-3px_-3px_6px_#ffffff] hover:shadow-[inset_2px_2px_4px_#a3b1c6,inset_-2px_-2px_4px_#ffffff] transition-all flex items-center gap-2"
-                    >
-                      <MessageCircle size={16} /> Message
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button 
-                      onClick={() => setIsEditModalOpen(true)} 
-                      className="p-3 bg-[#1da1f2] text-white rounded-full shadow-[3px_3px_6px_#a3b1c6,-3px_-3px_6px_#ffffff] active:scale-95 transition-all"
-                      title="Edit Profile"
-                    >
-                      <Edit3 size={18} />
-                    </button>
-                    <button 
-                      onClick={() => navigate('/settings')} 
-                      className="p-3 bg-[#e0e5ec] text-slate-500 hover:text-[#1da1f2] rounded-full shadow-[3px_3px_6px_#a3b1c6,-3px_-3px_6px_#ffffff] hover:shadow-[inset_2px_2px_4px_#a3b1c6,inset_-2px_-2px_4px_#ffffff] active:scale-95 transition-all"
-                      title="Settings"
-                    >
-                      <Settings size={18} />
-                    </button>
-
-                    {/* Circular Progress Indicator */}
-                    {completionRate < 100 && (
-                      <div className="relative flex items-center justify-center w-11 h-11 bg-[#e0e5ec] rounded-full shadow-[inset_2px_2px_4px_#a3b1c6,inset_-2px_-2px_4px_#ffffff] shrink-0 ml-2" title={`Profile ${completionRate}% complete`}>
-                        <svg className="w-11 h-11 transform -rotate-90">
-                          <circle cx="22" cy="22" r="18" fill="none" stroke="#d1d8e0" strokeWidth="4" />
-                          <circle cx="22" cy="22" r="18" fill="none" stroke="#1da1f2" strokeWidth="4" strokeDasharray={113} strokeDashoffset={113 - (completionRate / 100) * 113} className="transition-all duration-1000 ease-out" strokeLinecap="round" />
-                        </svg>
-                        <span className="absolute text-[10px] font-black text-[#1da1f2]">{completionRate}%</span>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
+          {/* STATS */}
+          <div className="flex gap-4 sm:gap-6 md:gap-8 pb-2 text-center items-center">
+            <div className="flex flex-col">
+              <span className="text-[15px] sm:text-[17px] md:text-xl font-black text-slate-900">{tabCache['posts']?.length || 0}</span>
+              <span className="text-[10px] sm:text-[11px] font-bold text-slate-500">posts</span>
             </div>
-
-            {/* CONTACT INFO */}
-            <div className="md:col-span-5 space-y-4 pt-4 md:pt-0 md:border-l border-slate-300/50 md:pl-8">
-              <div>
-                <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                  <Briefcase size={12} /> Primary Contact
-                </h3>
-                <p className="text-sm font-bold text-slate-800">{profileData.fullName}</p>
-              </div>
-              <div>
-                <p className="text-sm text-[#1da1f2] truncate flex items-center gap-1.5">
-                  <Mail size={12} className="text-slate-400" /> {profileData.email}
-                </p>
-              </div>
+            <div className="flex flex-col cursor-pointer hover:text-[#1da1f2] transition-colors">
+              <span className="text-[15px] sm:text-[17px] md:text-xl font-black text-slate-900">{followersCount}</span>
+              <span className="text-[10px] sm:text-[11px] font-bold text-slate-500">followers</span>
             </div>
-            
+            <div className="flex flex-col cursor-pointer hover:text-[#1da1f2] transition-colors">
+              <span className="text-[15px] sm:text-[17px] md:text-xl font-black text-slate-900">{followingCount}</span>
+              <span className="text-[10px] sm:text-[11px] font-bold text-slate-500">following</span>
+            </div>
           </div>
         </div>
+
+        {/* PROFILE INFO ROW */}
+        <div className="px-6 mt-3 text-left">
+          <h2 className="text-[17px] sm:text-[19px] font-black text-slate-900 flex items-center justify-start gap-1.5 mb-0.5">
+            {profileData.company || profileData.fullName}
+            {profileData.is_verified && <Sparkles size={14} className="text-[#1da1f2]" />}
+          </h2>
+          
+          <p className="text-[12px] sm:text-[13px] font-bold text-slate-600 mb-3 flex items-center justify-start flex-wrap gap-1.5">
+            {profileData.fullName} <span className="text-slate-400 mx-1">|</span> {displayBusinessType}
+            {profileData.primary_service && (
+              <>
+                <span className="text-slate-400 mx-1">|</span>
+                <span className="flex items-center gap-1 text-[#1da1f2]">
+                  <Briefcase size={12} /> {profileData.primary_service}
+                </span>
+              </>
+            )}
+          </p>
+
+          {profileData.bio && (
+            <p className="text-[13px] sm:text-[14px] font-medium text-slate-800 leading-snug whitespace-pre-wrap max-w-[600px] mb-4">
+              {profileData.bio}
+            </p>
+          )}
+
+          {/* DETAILED BUSINESS INFO */}
+          <div className="flex flex-wrap items-center justify-start gap-x-4 gap-y-2 text-[11px] sm:text-[12px] font-semibold text-slate-500 max-w-[600px] mb-2">
+            {profileData.email && (
+              <span className="flex items-center gap-1.5"><Mail size={14} className="text-slate-400" /> {profileData.email}</span>
+            )}
+            {profileData.phone && (
+              <span className="flex items-center gap-1.5"><Phone size={14} className="text-slate-400" /> {profileData.phone}</span>
+            )}
+            {profileData.location && (
+              <span className="flex items-center gap-1.5"><MapPin size={14} className="text-slate-400" /> {profileData.location}</span>
+            )}
+            {profileData.year_established && (
+              <span className="flex items-center gap-1.5"><Calendar size={14} className="text-slate-400" /> Est. {profileData.year_established}</span>
+            )}
+            {profileData.team_size && (
+              <span className="flex items-center gap-1.5"><UsersIcon size={14} className="text-slate-400" /> {profileData.team_size}</span>
+            )}
+            {profileData.website && (
+              <a href={profileData.website.startsWith('http') ? profileData.website : `https://${profileData.website}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-[#1da1f2] hover:underline transition-colors">
+                <Globe size={14} /> {profileData.website.replace(/^https?:\/\//, '')}
+              </a>
+            )}
+          </div>
+
+          {/* PROFILE COMPLETION BANNER (Only shows for current user if < 100%) */}
+          {!profileData.isPartner && completionRate < 100 && (
+            <div className="mt-4 px-4 py-3 bg-[#1da1f2]/10 rounded-xl border border-[#1da1f2]/20 flex items-center justify-between max-w-[600px]">
+               <div className="flex items-center gap-3">
+                  <div className="relative flex items-center justify-center w-10 h-10 shrink-0">
+                     <svg className="w-10 h-10 transform -rotate-90">
+                       <circle cx="20" cy="20" r="16" fill="none" stroke="#e0e5ec" strokeWidth="4" />
+                       <circle cx="20" cy="20" r="16" fill="none" stroke="#1da1f2" strokeWidth="4" strokeDasharray={100} strokeDashoffset={100 - completionRate} strokeLinecap="round" className="transition-all duration-1000 ease-out" />
+                     </svg>
+                     <span className="absolute text-[9px] font-black text-[#1da1f2]">{completionRate}%</span>
+                  </div>
+                  <div className="text-left">
+                     <p className="text-xs font-bold text-slate-800">Complete your profile</p>
+                     <p className="text-[10px] font-medium text-slate-500">Add missing details to attract more partners.</p>
+                  </div>
+               </div>
+               <button onClick={() => setIsEditModalOpen(true)} className="text-xs font-bold px-3 py-1.5 bg-white text-[#1da1f2] rounded-lg shadow-sm hover:shadow transition-all">
+                 Edit
+               </button>
+            </div>
+          )}
+        </div>
+
+        {/* ACTION BUTTONS ROW */}
+        <div className="px-6 mt-5 flex items-center gap-3">
+          {profileData.isPartner ? (
+            <>
+              <button 
+                onClick={handleFollow}
+                className={`flex-1 py-2.5 rounded-xl font-black text-sm shadow-[3px_3px_6px_#a3b1c6,-3px_-3px_6px_#ffffff] transition-all flex items-center justify-center gap-2 ${
+                  isFollowing ? 'bg-[#d1d8e0] text-[#1da1f2] shadow-[inset_2px_2px_4px_#a3b1c6,inset_-2px_-2px_4px_#ffffff]' : 'bg-[#1da1f2] text-white hover:bg-[#1a91da]'
+                }`}
+              >
+                {isFollowing ? <UserCheck size={16} /> : <UserPlus size={16} />}
+                {isFollowing ? 'Following' : 'Follow'}
+              </button>
+              <button 
+                onClick={handleMessageClick}
+                className="flex-1 py-2.5 bg-[#e0e5ec] text-slate-700 rounded-xl font-black text-sm shadow-[3px_3px_6px_#a3b1c6,-3px_-3px_6px_#ffffff] hover:shadow-[inset_2px_2px_4px_#a3b1c6,inset_-2px_-2px_4px_#ffffff] transition-all flex items-center justify-center gap-2"
+              >
+                <MessageCircle size={16} /> Message
+              </button>
+            </>
+          ) : (
+            <>
+              <button 
+                onClick={() => setIsEditModalOpen(true)} 
+                className="flex-1 py-2.5 bg-[#e0e5ec] text-slate-700 rounded-xl font-black text-sm shadow-[3px_3px_6px_#a3b1c6,-3px_-3px_6px_#ffffff] hover:shadow-[inset_2px_2px_4px_#a3b1c6,inset_-2px_-2px_4px_#ffffff] transition-all flex items-center justify-center gap-2"
+              >
+                <Edit3 size={16} /> Edit Profile
+              </button>
+              <button 
+                onClick={() => navigate('/settings')} 
+                className="flex-1 py-2.5 bg-[#e0e5ec] text-slate-700 rounded-xl font-black text-sm shadow-[3px_3px_6px_#a3b1c6,-3px_-3px_6px_#ffffff] hover:shadow-[inset_2px_2px_4px_#a3b1c6,inset_-2px_-2px_4px_#ffffff] transition-all flex items-center justify-center gap-2"
+              >
+                <Settings size={16} /> Settings
+              </button>
+            </>
+          )}
+        </div>
+
+      </div>
+
+      {/* TABS WITH SAVED ITEM (Moved above upgrade banner) */}
+      <div className="sticky top-6 z-30 bg-[#e0e5ec] rounded-2xl p-1 shadow-[9px_9px_16px_#a3b1c6,-9px_-9px_16px_#ffffff] mb-6 flex justify-between border border-white/50">
+        <TabButton active={activeTab === 'posts'} onClick={() => setActiveTab('posts')} icon={<LayoutList size={22} />} />
+        <TabButton active={activeTab === 'likes'} onClick={() => setActiveTab('likes')} icon={<Heart size={22} />} />
+        <TabButton active={activeTab === 'reposts'} onClick={() => setActiveTab('reposts')} icon={<Repeat size={22} />} />
+        <TabButton active={activeTab === 'saved'} onClick={() => setActiveTab('saved')} icon={<Bookmark size={22} />} />
       </div>
 
       {/* PREMIUM UPGRADE BANNER */}
@@ -981,14 +981,6 @@ export default function Profile() {
           </button>
         </div>
       )}
-
-      {/* TABS WITH SAVED ITEM */}
-      <div className="sticky top-6 z-30 bg-[#e0e5ec] rounded-2xl p-1 shadow-[9px_9px_16px_#a3b1c6,-9px_-9px_16px_#ffffff] mb-6 flex justify-between border border-white/50">
-        <TabButton active={activeTab === 'posts'} onClick={() => setActiveTab('posts')} icon={<LayoutList size={22} />} />
-        <TabButton active={activeTab === 'likes'} onClick={() => setActiveTab('likes')} icon={<Heart size={22} />} />
-        <TabButton active={activeTab === 'reposts'} onClick={() => setActiveTab('reposts')} icon={<Repeat size={22} />} />
-        <TabButton active={activeTab === 'saved'} onClick={() => setActiveTab('saved')} icon={<Bookmark size={22} />} />
-      </div>
 
       {/* FEED CONTENT */}
       <div className="space-y-6">

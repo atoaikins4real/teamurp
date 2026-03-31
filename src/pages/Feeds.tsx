@@ -54,8 +54,7 @@ const Lightbox = ({ mediaUrls, initialIndex, onClose }: { mediaUrls: string[], i
         </>
       )}
 
-      <div className="max-w-5xl max-h-[90vh] w-full p-4 flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
-        {isVideoUrl(currentUrl) ? (
+<div className="max-w-[800px] mx-auto pb-24 animate-in fade-in duration-500 relative select-none">        {isVideoUrl(currentUrl) ? (
           <video src={currentUrl} controls autoPlay className="max-w-full max-h-[85vh] rounded-xl shadow-2xl" />
         ) : (
           <img src={currentUrl} alt="Enlarged" className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl" />

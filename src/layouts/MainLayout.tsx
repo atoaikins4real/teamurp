@@ -346,7 +346,8 @@ const MainLayout: React.FC = () => {
   }
 
   return (
-    <div className="w-full h-screen bg-slate-50 relative overflow-hidden font-sans flex flex-col">
+    // Updated container to handle mobile viewport height properly
+    <div className="w-full min-h-[100dvh] bg-slate-50 relative overflow-x-hidden font-sans flex flex-col">
       
       {/* --- NETWORK ALERT --- */}
       <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[99999] transition-all duration-500 pointer-events-none ${isOffline || isRestored ? 'translate-y-0 opacity-100' : '-translate-y-24 opacity-0'}`}>
@@ -359,7 +360,7 @@ const MainLayout: React.FC = () => {
       </div>
 
       {/* --- HEADER --- */}
-      <header className="w-full h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 lg:px-8 shrink-0 z-50">
+      <header className="sticky top-0 w-full h-16 bg-white/95 backdrop-blur-sm border-b border-slate-200 flex items-center justify-between px-4 lg:px-8 shrink-0 z-50">
         
         <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => navigate('/feeds')}>
           <div className="w-5 h-5 rounded-full bg-[#1da1f2]"></div>
@@ -473,11 +474,10 @@ const MainLayout: React.FC = () => {
       </header>
 
       {/* --- MAIN LAYOUT GRID --- */}
-      <div className="flex-1 w-full max-w-[1400px] mx-auto px-4 overflow-hidden relative">
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 lg:gap-8 h-full relative">
-          
+      <div className="flex-1 w-full max-w-[1400px] mx-auto overflow-hidden relative">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-0 md:gap-6 lg:gap-8 h-full relative">
           {/* LEFT SIDEBAR */}
-          <div className="hidden lg:flex lg:flex-col lg:col-span-3 h-full overflow-y-auto scrollbar-hide py-6 pr-2">
+          <div className="hidden lg:flex lg:flex-col lg:col-span-3 h-full overflow-y-auto scrollbar-hide py-6 pl-4 pr-2">
             <div className="flex-1 space-y-6">
               
               {user ? (
@@ -576,13 +576,14 @@ const MainLayout: React.FC = () => {
           </div>
 
           {/* MIDDLE CONTENT (OUTLET) */}
-          <div className={`col-span-1 md:col-span-12 ${hideRightSidebar ? 'lg:col-span-9' : 'lg:col-span-6 xl:col-span-6'} h-full overflow-y-auto scrollbar-hide py-6 pb-32 lg:pb-6 transition-all duration-300`}>
+          {/* REMOVED px-4 on mobile so feeds stretch edge-to-edge. Kept padding on md screens. */}
+          <div className={`col-span-1 md:col-span-12 ${hideRightSidebar ? 'lg:col-span-9' : 'lg:col-span-6 xl:col-span-6'} h-full overflow-y-auto scrollbar-hide py-2 md:py-6 pb-28 lg:pb-6 px-0 md:px-0 transition-all duration-300`}>
             <Outlet context={{ setHideBottomNav }} />
           </div>
 
           {/* RIGHT SIDEBAR */}
           {!hideRightSidebar && user && (
-            <div className="hidden lg:flex flex-col lg:col-span-3 xl:col-span-3 h-full overflow-y-auto scrollbar-hide py-6 space-y-6 pl-2 pr-1 animate-in fade-in duration-300 relative z-10">
+            <div className="hidden lg:flex flex-col lg:col-span-3 xl:col-span-3 h-full overflow-y-auto scrollbar-hide py-6 space-y-6 pl-2 pr-4 animate-in fade-in duration-300 relative z-10">
               
               {userRole !== 'tourist' && (
                 <>
@@ -655,7 +656,7 @@ const MainLayout: React.FC = () => {
       </div>
 
       {/* MOBILE BOTTOM NAV */}
-      <div className={`md:hidden fixed bottom-0 left-0 right-0 z-[90] transition-transform duration-300 ease-in-out ${hideBottomNav ? 'translate-y-full' : 'translate-y-0'}`}>
+      <div className={`lg:hidden fixed bottom-0 left-0 right-0 z-[90] transition-transform duration-300 ease-in-out ${hideBottomNav ? 'translate-y-full' : 'translate-y-0'}`}>
         <BottomNav userRole={userRole} onOpenPostModal={() => user ? setIsPostModalOpen(true) : setAuthModalConfig({ isOpen: true, message: 'Sign in to post updates' })} />
       </div>
       
